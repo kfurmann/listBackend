@@ -98,6 +98,23 @@ app.post('/findUsersByName', function (req, res) {
     })
 });
 
+app.post('/sendInvitationToUser', function (req, res) {
+    User.update({name: req.body.toUserName}, {$push: {invitations: {fromUser: req.body.fromUserName}}}, function (err, user) {
+        if (err) {
+            // error
+            res.json({
+                type: false,
+                data: "error " + err
+            })
+        } else {
+            res.json({
+                type: true,
+                data: "invitation sent"
+            });
+        }
+    })
+});
+
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
     var err = new Error('Not Found');
