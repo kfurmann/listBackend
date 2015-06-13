@@ -185,6 +185,8 @@ app.post('/addTask', function (req, res) {
 
 app.post('/doTask', function (req, res) {
 
+    Task.update({_id: req.body.taskId}, {done: true}, generateDefaultDBCallback(res, "error", "task marked as done"));
+
 });
 
 // catch 404 and forward to error handler
