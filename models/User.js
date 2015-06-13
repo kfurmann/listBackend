@@ -8,7 +8,12 @@ var UserSchema = new mongoose.Schema({
     //token: String
     invitations: [{
         fromUser: String
-    }]
+    }],
+    accessedUsers: [
+        {
+            userName:String
+        }
+    ]
 });
 
 module.exports = mongoose.model('User', UserSchema);

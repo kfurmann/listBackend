@@ -38,24 +38,29 @@ app.use(function (req, res, next) {
 app.use('/', routes);
 //app.use('/users', users);
 
+function generateDefaultDBCallback(res, errorMessage, successMessage) {
+    return function defaultDBCallback(err, raw) {
+        if (err) {
+            // error
+            res.json({
+                type: false,
+                data: errorMessage + err
+            })
+        } else {
+            res.json({
+                type: true,
+                data: successMessage
+            });
+        }
+    }
+}
+
 app.post('/signin', function (req, res) {
 
     function saveNewUser() {
         var newUser = new User();
         newUser.name = req.body.name;
-        newUser.save(function (err, user) {
-            if (err) {
-                res.json({
-                    type: false,
-                    data: "error " + err
-                })
-            } else {
-                res.json({
-                    type: true,
-                    data: "new user saved"
-                })
-            }
-        });
+        newUser.save(generateDefaultDBCallback(res, "error", "user signed in"));
     }
 
     User.findOne({name: req.body.name}, function (err, user) {
@@ -99,20 +104,18 @@ app.post('/findUsersByName', function (req, res) {
 });
 
 app.post('/sendInvitationToUser', function (req, res) {
-    User.update({name: req.body.toUserName}, {$push: {invitations: {fromUser: req.body.fromUserName}}}, function (err, user) {
-        if (err) {
-            // error
-            res.json({
-                type: false,
-                data: "error " + err
-            })
-        } else {
-            res.json({
-                type: true,
-                data: "invitation sent"
-            });
-        }
-    })
+
+    var dbQuery = {$push: {invitations: {fromUser: req.body.fromUserName}}};
+
+    User.update({name: req.body.toUserName}, dbQuery, generateDefaultDBCallback(res, "error", "invitation sent"));
+});
+
+app.post('/acceptInvitation', function (req, res) {
+
+    User.update({name: req.body.userName}, {$pull: {invitations: {fromUser: req.body.fromUserName}}}, generateDefaultDBCallback(res, "error", "invitation deleted"));
+    User.update({name: req.body.userName}, { $push: {accessedUsers: {userName:req.body.fromUserName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
+    User.update({name: req.body.fromUserName}, { $push: {accessedUsers: {userName:req.body.userName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
+
 });
 
 // catch 404 and forward to error handler
