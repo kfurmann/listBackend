@@ -10,6 +10,7 @@ var routes = require('./routes/index');
 var users = require('./routes/users');
 
 var User = require('./models/User');
+var Task = require('./models/Task');
 
 var app = express();
 
@@ -105,14 +106,14 @@ app.post('/findUsersByName', function (req, res) {
 
 app.post('/sendInvitationToUser', function (req, res) {
 
-    var dbQuery = {$push: {invitations: {fromUser: req.body.fromUserName}}};
+    var dbQuery = {$push: {invitations: {fromUser: req.body.fromUserId}}};
 
-    User.update({name: req.body.toUserName}, dbQuery, generateDefaultDBCallback(res, "error", "invitation sent"));
+    User.update({_id: req.body.toUserId}, dbQuery, generateDefaultDBCallback(res, "error", "invitation sent"));
 });
 
 app.post('/acceptInvitation', function (req, res) {
 
-    User.update({name: req.body.userName}, {$pull: {invitations: {fromUser: req.body.fromUserName}}}, function (err, raw) {
+    User.update({_id: req.body.userId}, {$pull: {invitations: {fromUser: req.body.fromUserId}}}, function (err, raw) {
         if (err) {
             res.json({
                     type: false,
@@ -121,7 +122,7 @@ app.post('/acceptInvitation', function (req, res) {
             )
         }
     });
-    User.update({name: req.body.userName}, {$push: {accessedUsers: {userName: req.body.fromUserName}}}, function (err, raw) {
+    User.update({_id: req.body.userId}, {$push: {accessedUsers: {userName: req.body.fromUserId}}}, function (err, raw) {
         if (err) {
             res.json({
                     type: false,
@@ -130,15 +131,14 @@ app.post('/acceptInvitation', function (req, res) {
             )
         }
     });
-    User.update({name: req.body.fromUserName}, {$push: {accessedUsers: {userName: req.body.userName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
+    User.update({_id: req.body.fromUserId}, {$push: {accessedUsers: {userName: req.body.userId}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
 
 })
 ;
 
 app.post('/tasks', function (req, res) {
 
-    var tasks = [];
-    var userIds = [];
+    var userIds = [req.body.user_id];
 
     User.findOne({_id: req.body.user_id}, function (err, user) {
         if (err) {
@@ -148,37 +148,26 @@ app.post('/tasks', function (req, res) {
                 data: "error" + err
             })
         } else {
-            user.accessedUsers.forEach(function (au) {
-                userIds.push(au.userName);
+            if(user.accessedUsers !== null) {
+                user.accessedUsers.forEach(function (au) {
+                    userIds.push(au.userName);
+                });
+            }
+
+            var promise = Task.find({user: {$in: userIds}}).exec();
+
+            promise.onReject(function (reason) {
+                res.json({
+                    type: false,
+                    data: reason
+                });
             });
-            tasks = user.tasks;
-
-            if (userIds.length > 0) {
-
-                var promise = User.find({name: {$in: userIds}}).exec();
-
-                promise.onReject(function(reason){
-                    res.json({
-                        type: false,
-                        data: reason
-                    });
-                });
-                promise.then(function (users) {
-                    users.forEach(function (user) {
-                        tasks = tasks.concat(user.tasks);
-                    });
-                    console.log("y");
-                    res.json({
-                        type: true,
-                        data: tasks
-                    });
-                });
-            } else {
+            promise.then(function (tasks) {
                 res.json({
                     type: true,
                     data: tasks
                 });
-            }
+            });
         }
     });
 
@@ -186,17 +175,16 @@ app.post('/tasks', function (req, res) {
 
 app.post('/addTask', function (req, res) {
 
-    var addTaskQuery = {
-        $push: {
-            tasks: {
-                body: req.body.taskBody,
-                dateStart: req.body.start,
-                dateDeadline: req.body.deadline
-            }
-        }
-    };
+    var newTask = new Task();
+    newTask.user = req.body.user_id;
+    newTask.body = req.body.taskBody;
+    newTask.dateStart = req.body.start;
+    newTask.dateDeadLine = req.body.deadline;
+    newTask.save(generateDefaultDBCallback(res, "error", "task added"));
+});
 
-    User.update({name: req.body.userName}, addTaskQuery, generateDefaultDBCallback(res, "error", "task added"));
+app.post('/doTask', function (req, res) {
+
 });
 
 // catch 404 and forward to error handler
