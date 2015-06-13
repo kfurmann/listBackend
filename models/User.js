@@ -13,6 +13,14 @@ var UserSchema = new mongoose.Schema({
         {
             userName:String
         }
+    ],
+    tasks: [
+        {
+            body: String,
+            dateAdded: {type: Date, default: Date.now},
+            dateStart: {type: Date, default: Date.now},
+            dateDeadline: {type: Date, default: Date.now}
+        }
     ]
 });
 

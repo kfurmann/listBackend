@@ -112,10 +112,91 @@ app.post('/sendInvitationToUser', function (req, res) {
 
 app.post('/acceptInvitation', function (req, res) {
 
-    User.update({name: req.body.userName}, {$pull: {invitations: {fromUser: req.body.fromUserName}}}, generateDefaultDBCallback(res, "error", "invitation deleted"));
-    User.update({name: req.body.userName}, { $push: {accessedUsers: {userName:req.body.fromUserName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
-    User.update({name: req.body.fromUserName}, { $push: {accessedUsers: {userName:req.body.userName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
+    User.update({name: req.body.userName}, {$pull: {invitations: {fromUser: req.body.fromUserName}}}, function (err, raw) {
+        if (err) {
+            res.json({
+                    type: false,
+                    data: "error" + err
+                }
+            )
+        }
+    });
+    User.update({name: req.body.userName}, {$push: {accessedUsers: {userName: req.body.fromUserName}}}, function (err, raw) {
+        if (err) {
+            res.json({
+                    type: false,
+                    data: "error" + err
+                }
+            )
+        }
+    });
+    User.update({name: req.body.fromUserName}, {$push: {accessedUsers: {userName: req.body.userName}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
 
+})
+;
+
+app.post('/tasks', function (req, res) {
+
+    var tasks = [];
+    var userIds = [];
+
+    User.findOne({_id: req.body.user_id}, function (err, user) {
+        if (err) {
+            //
+            res.json({
+                type: false,
+                data: "error" + err
+            })
+        } else {
+            user.accessedUsers.forEach(function (au) {
+                userIds.push(au.userName);
+            });
+            tasks = user.tasks;
+
+            if (userIds.length > 0) {
+
+                var promise = User.find({name: {$in: userIds}}).exec();
+
+                promise.onReject(function(reason){
+                    res.json({
+                        type: false,
+                        data: reason
+                    });
+                });
+                promise.then(function (users) {
+                    users.forEach(function (user) {
+                        tasks = tasks.concat(user.tasks);
+                    });
+                    console.log("y");
+                    res.json({
+                        type: true,
+                        data: tasks
+                    });
+                });
+            } else {
+                res.json({
+                    type: true,
+                    data: tasks
+                });
+            }
+        }
+    });
+
+});
+
+app.post('/addTask', function (req, res) {
+
+    var addTaskQuery = {
+        $push: {
+            tasks: {
+                body: req.body.taskBody,
+                dateStart: req.body.start,
+                dateDeadline: req.body.deadline
+            }
+        }
+    };
+
+    User.update({name: req.body.userName}, addTaskQuery, generateDefaultDBCallback(res, "error", "task added"));
 });
 
 // catch 404 and forward to error handler
