@@ -113,25 +113,16 @@ app.post('/sendInvitationToUser', function (req, res) {
 
 app.post('/acceptInvitation', function (req, res) {
 
-    User.update({_id: req.body.userId}, {$pull: {invitations: {fromUser: req.body.fromUserId}}}, function (err, raw) {
-        if (err) {
-            res.json({
-                    type: false,
-                    data: "error" + err
-                }
-            )
-        }
-    });
-    User.update({_id: req.body.userId}, {$push: {accessedUsers: {userName: req.body.fromUserId}}}, function (err, raw) {
-        if (err) {
-            res.json({
-                    type: false,
-                    data: "error" + err
-                }
-            )
-        }
-    });
-    User.update({_id: req.body.fromUserId}, {$push: {accessedUsers: {userName: req.body.userId}}}, generateDefaultDBCallback(res, "error", "accessed users updated"));
+    var promiseToRemoveInvitation = User.update({_id: req.body.userId}, {$pull: {invitations: {fromUser: req.body.fromUserId}}}).exec();
+    var promiseToAddActorAToAccessedUsers = User.update({_id: req.body.userId}, {$push: {accessedUsers: {userName: req.body.fromUserId}}}).exec();
+    var promiseToAddActorBToAccessedUsers = User.update({_id: req.body.fromUserId}, {$push: {accessedUsers: {userName: req.body.userId}}}).exec();
+
+    Promise.all([promiseToRemoveInvitation, promiseToAddActorAToAccessedUsers, promiseToAddActorBToAccessedUsers]).then(function(values){
+        res.json({
+            type:true,
+            data: values
+        })
+    })
 
 })
 ;
