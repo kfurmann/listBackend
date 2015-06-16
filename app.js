@@ -5,14 +5,59 @@ var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var mongoose = require('mongoose');
+var jwt = require('jsonwebtoken');
+var env = require('node-env-file');
+
+var passport = require('passport');
+var LocalStrategy = require('passport-local').Strategy;
+var BearerStrategy = require('passport-http-bearer').Strategy;
 
 var routes = require('./routes/index');
-var users = require('./routes/users');
 
 var User = require('./models/User');
 var Task = require('./models/Task');
 
 var app = express();
+
+env('dev.env');
+
+passport.use(new LocalStrategy({
+        usernameField: 'name',
+        session: false
+    },
+    function (username, password, done) {
+        User.findOne({name: username}, function (err, user) {
+            if (err) {
+                return done(err);
+            }
+            if (!user) {
+                return done(null, false, {message: 'Incorrect username.'});
+            }
+            user.comparePassword(password, function (err, isMatch) {
+                if (err) return done(err);
+                if (isMatch) {
+                    return done(null, user);
+                } else {
+                    return done(null, false, {message: 'Invalid password'});
+                }
+            });
+        });
+    }
+));
+
+passport.use(new BearerStrategy(
+    function (token, done) {
+        User.findOne({token: token}, function (err, user) {
+            if (err) {
+                return done(err);
+            }
+            if (!user) {
+                return done(null, false);
+            }
+            return done(null, user, {scope: 'all'});
+        });
+    }
+));
 
 mongoose.connect('mongodb://localhost/local');
 
@@ -27,17 +72,24 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(cookieParser());
 app.use(require('less-middleware')(path.join(__dirname, 'public')));
+app.use(passport.initialize());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(function (req, res, next) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type, Authorization');
-    next();
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Authorization');
+
+    // intercept OPTIONS method
+    if ('OPTIONS' == req.method) {
+        res.sendStatus(200);
+    }
+    else {
+        next();
+    }
 });
 
 app.use('/', routes);
-//app.use('/users', users);
 
 function generateDefaultDBCallback(res, errorMessage, successMessage) {
     return function defaultDBCallback(err, raw) {
@@ -61,7 +113,15 @@ app.post('/signin', function (req, res) {
     function saveNewUser() {
         var newUser = new User();
         newUser.name = req.body.name;
-        newUser.save(generateDefaultDBCallback(res, "error", "user signed in"));
+        newUser.password = req.body.password;
+        newUser.token = jwt.sign(newUser, process.env.JWT_SECRET);
+
+        newUser.save(function (err, user) {
+            res.json({
+                type: true,
+                data: user.token
+            })
+        });
     }
 
     User.findOne({name: req.body.name}, function (err, user) {
@@ -84,9 +144,18 @@ app.post('/signin', function (req, res) {
     });
 });
 
-app.post('/findUsersByName', function (req, res) {
+app.post('/login', passport.authenticate('local', {
+    failureRedirect: '/login',
+    failureFlash: false,
+    session: false
+}), function (req, res) {
+    res.redirect('/');
+});
 
-    var re = new RegExp(req.body.name, 'i');
+
+app.get('/findUsersByName', passport.authenticate('bearer', {session: false}), function (req, res) {
+
+    var re = new RegExp(req.name, 'i');
 
     User.find({"name": {$regex: re}}, function (err, users) {
         if (err) {
@@ -96,9 +165,18 @@ app.post('/findUsersByName', function (req, res) {
                 data: "error " + err
             })
         } else {
+
+            var filteredUsers = [];
+            users.forEach(function(u){
+               filteredUsers.push({
+                   name: u.name,
+                   _id: u._id
+               })
+            });
+
             res.json({
                 type: true,
-                data: users
+                data: filteredUsers
             });
         }
     })
@@ -117,15 +195,13 @@ app.post('/acceptInvitation', function (req, res) {
     var promiseToAddActorAToAccessedUsers = User.update({_id: req.body.userId}, {$push: {accessedUsers: {userName: req.body.fromUserId}}}).exec();
     var promiseToAddActorBToAccessedUsers = User.update({_id: req.body.fromUserId}, {$push: {accessedUsers: {userName: req.body.userId}}}).exec();
 
-    Promise.all([promiseToRemoveInvitation, promiseToAddActorAToAccessedUsers, promiseToAddActorBToAccessedUsers]).then(function(values){
+    Promise.all([promiseToRemoveInvitation, promiseToAddActorAToAccessedUsers, promiseToAddActorBToAccessedUsers]).then(function (values) {
         res.json({
-            type:true,
+            type: true,
             data: values
         })
     })
-
-})
-;
+});
 
 app.post('/tasks', function (req, res) {
 
@@ -139,7 +215,7 @@ app.post('/tasks', function (req, res) {
                 data: "error" + err
             })
         } else {
-            if(user.accessedUsers !== null) {
+            if (user.accessedUsers !== null) {
                 user.accessedUsers.forEach(function (au) {
                     userIds.push(au.userName);
                 });
